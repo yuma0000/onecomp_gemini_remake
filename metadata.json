@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "OneCompression QEP Visualizer",
+  "description": "Interactive visualizer explaining how Quantization Error Propagation (QEP) works for extreme LLM compression.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
