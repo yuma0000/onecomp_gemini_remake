@@ -1,0 +1,6 @@
+run_*.sh
+logs/
+qwen3-8b-incremental/
+qwen3-8b-incremental-actorder-mse/
+qwen3-8b-fixed-lam*/
+qwen3-8b-diagonal-lam*/
