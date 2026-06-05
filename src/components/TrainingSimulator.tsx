@@ -5,9 +5,10 @@ import { cn } from "../lib/utils";
 
 const NOISE_CHARS = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?., ";
 const CONTEXT_LEN = 3;
+const MAX_VOCAB = 250;
 
 export function TrainingSimulator() {
-  const [datasetText, setDatasetText] = useState("AI Studioで学習\nモデルの学習シミュレーション\nHello World");
+  const [datasetText, setDatasetText] = useState("今日の天気は晴れです\n今日の天気は雨です\n明日の天気は雪です\n明日の天気は曇りです\nAI Studioで学習\nAIの進化");
   const [targetDataset, setTargetDataset] = useState<string[][]>([]);
   const [learningRate, setLearningRate] = useState(0.1);
   const [isTraining, setIsTraining] = useState(false);
@@ -32,7 +33,7 @@ export function TrainingSimulator() {
     let ctx = tokens.slice(-CONTEXT_LEN);
     while (ctx.length < CONTEXT_LEN) ctx = [' ', ...ctx]; // space padding
     
-    const V = chars.length;
+    const V = MAX_VOCAB;
     const x = Array(CONTEXT_LEN * V).fill(0);
     for (let c = 0; c < CONTEXT_LEN; c++) {
       let idx = chars.indexOf(ctx[c]);
@@ -52,50 +53,66 @@ export function TrainingSimulator() {
           const ctxTokens = tokens.slice(0, i);
           const x = encodeContext(ctxTokens, chars);
           const { p } = nnRef.current!.forward(x);
-          const maxIdx = p.indexOf(Math.max(...p));
+          
+          const validP = p.slice(0, chars.length);
+          const maxIdx = validP.indexOf(Math.max(...validP));
           preds.push(chars[maxIdx]);
       }
       return preds;
     });
   }
 
-  const initTraining = (inputText: string) => {
+  const updateDataset = (inputText: string, isReset: boolean) => {
     const lines = inputText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length === 0) return;
     
     const tokenizedLines = lines.map(tokenize);
     setTargetDataset(tokenizedLines);
 
+    if (charsetRef.current.length === 0 || isReset) {
+        const pool = ['<s>', '</s>', ' '];
+        for (const c of NOISE_CHARS) {
+            if (!pool.includes(c)) pool.push(c);
+        }
+        charsetRef.current = pool;
+    }
+
     const allTokens = tokenizedLines.flat();
-    const unique = Array.from(new Set(allTokens));
-    const pool = Array.from(new Set([' ', ...unique, ...NOISE_CHARS.split('')]));
-    charsetRef.current = pool;
+    for (const t of allTokens) {
+        if (!charsetRef.current.includes(t) && charsetRef.current.length < MAX_VOCAB) {
+            charsetRef.current.push(t);
+        }
+    }
     
-    const V = pool.length;
+    if (!nnRef.current || isReset) {
+        nnRef.current = new MiniNN(CONTEXT_LEN * MAX_VOCAB, 128, MAX_VOCAB, learningRate);
+        setEpoch(0);
+        setLoss(100);
+        setGeneratedTokens([]);
+        setIsGenerating(false);
+    }
     
-    // N-gram MLP Language Model
-    nnRef.current = new MiniNN(CONTEXT_LEN * V, 128, V, learningRate);
-    setEpoch(0);
-    setLoss(100);
     setDone(false);
-    setGeneratedTokens([]);
-    setIsGenerating(false);
-    
-    setPredictions(getPredictions(tokenizedLines, pool));
+    setPredictions(getPredictions(tokenizedLines, charsetRef.current));
   };
 
   useEffect(() => {
-    initTraining(datasetText);
+    updateDataset(datasetText, true);
   }, []);
   
-  const handleApply = () => {
+  const handleApplyContinual = () => {
     setIsTraining(false);
-    initTraining(datasetText);
+    updateDataset(datasetText, false);
+  };
+
+  const handleApplyReset = () => {
+    setIsTraining(false);
+    updateDataset(datasetText, true);
   };
   
   const toggleTraining = () => {
     if (done) {
-        initTraining(datasetText);
+        updateDataset(datasetText, false);
     }
     setIsTraining(!isTraining);
   };
@@ -158,7 +175,8 @@ export function TrainingSimulator() {
       const x = encodeContext(currentFullTokens, charsetRef.current);
       const { p } = nnRef.current!.forward(x);
       
-      const maxIdx = p.indexOf(Math.max(...p));
+      const validP = p.slice(0, charsetRef.current.length);
+      const maxIdx = validP.indexOf(Math.max(...validP));
       const nextToken = charsetRef.current[maxIdx];
       
       setGeneratedTokens(prev => [...prev, nextToken]);
@@ -222,12 +240,20 @@ export function TrainingSimulator() {
                <span className="text-sm font-mono font-bold w-12 text-slate-700">{learningRate.toFixed(3)}</span>
             </div>
             
-            <button 
-                onClick={handleApply}
-                className="w-full sm:w-auto px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap"
-            >
-                反映してリセット
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+                <button 
+                    onClick={handleApplyContinual}
+                    className="w-full sm:w-auto px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap"
+                >
+                    追加学習 (Continual)
+                </button>
+                <button 
+                    onClick={handleApplyReset}
+                    className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors shadow-sm whitespace-nowrap"
+                >
+                    全リセット
+                </button>
+            </div>
         </div>
       </div>
 
